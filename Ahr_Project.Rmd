@@ -1,0 +1,77 @@
+---
+title: "AhR Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, ECHO=FALSE}
+library(dplyr)
+library(DESeq2)
+library(edgeR)
+library(Biobase)
+```
+
+```{r}
+ahr_counts <- read.table("Galaxy174-[Merged_matrix].tabular")
+ahr_counts <- data.frame(ahr_counts,row.names = 1)
+
+colnames(ahr_counts) <- c("DMSO1", "DMSO2", "DMSO3", "INDO1", "INDO2", "INDO3","TCDD1", "TCDD2", "TCDD3", "TCIN1", "TCIN2", "TCIN3")
+samples <- factor(c("DMSO","INDO","TCDD","TCIN"))
+sampleCondition <- rep(samples,each=3)
+coldata <- data.frame(sample = colnames(ahr_counts),condition=sampleCondition)
+
+```
+DESeq2
+Basically there is no need to pre-filter the lowly expressed genes out .As these tools do that automatically in the results() steps. They normally assign low expressed genes with NA so there is significanly no change on the log2 or other values.
+
+```{r}
+#DESeq2 data set creation
+dds <- DESeqDataSetFromMatrix(countData = ahr_counts,colData = coldata,design = ~ condition)
+
+```
+
+Keep in mind that DESeq2 assigns the reference by defaault. Here it did assign DMSO but you can aslo pre assign the data so that you dont have to have any more confusion in the following steps.
+dds$condition <- factor(dds$condition, levels = c("untreated","treated"))
+or 
+dds$condition <- relevel(dds$condition, ref = "untreated")
+
+```{r}
+dds <- DESeq(dds)
+res_indo <- results(dds, contrast = list("condition_INDO_vs_DMSO"), alpha = 0.05)
+res_tcdd <- results(dds, contrast = list("condition_TCDD_vs_DMSO"), alpha = 0.05)
+res_tcin <- results(dds, contrast = list("condition_TCIN_vs_DMSO"),alpha = 0.05)
+
+```
+MA plot
+In DESeq2, the function plotMA shows the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet. Points will be colored red if the adjusted p value is less than <whatever given value>. Points which fall out of the window are plotted as open triangles pointing either up or down.
+
+```{r}
+#i used the usual plotMA() but seems like it is not a DESeq2 function in my system. This can be checked using sessioninfo()
+DESeq2::plotMA(res_indo, ylim=c(-2,2))
+DESeq2::plotMA(res_tcdd,ylim=c(-2,2))
+DESeq2::plotMA(res_tcin,ylim=c(-2,2))
+```
+
+LFC shrinkage:
+Shrinkage of effect size (LFC estimates) is useful for visualization and ranking of genes
+
+```{r}
+resLFC_indo <- lfcShrink(dds, coef = 2,type = "apeglm")
+#Here "condition_INDO_vs_DMSO" is 2nd element in resultnaes(dds) so coef=2
+resLFC_tcdd <- lfcShrink(dds, coef = 3,type = "apeglm")
+resLFC_tcin <- lfcShrink(dds, coef = 4,type = "apeglm")
+#Alternate shrinage estimators : ashr, normal
+```
+
+MA plot with shrunken values.
+It is more useful visualize the MA-plot for the shrunken log2 fold changes, which remove the noise associated with log2 fold changes from low count genes without requiring arbitrary filtering thresholds.
+
+```{r}
+DESeq2::plotMA(resLFC_indo, ylim=c(-2,2))
+DESeq2::plotMA(resLFC_tcdd,ylim=c(-2,2))
+DESeq2::plotMA(resLFC_tcin,ylim=c(-2,2))
+```
+
